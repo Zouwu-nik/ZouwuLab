@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zouwu Lab</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23e8a33d'/><path d='M5 9.6H14L5 22.4H14M19 9.6v12.8h8' fill='none' stroke='%23141414' stroke-width='3' stroke-linejoin='miter' stroke-linecap='square'/></svg>">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <button class="brand" id="aboutBtn" title="О программе"><span class="logo">ZL</span>Zouwu Lab<small>by Zouwu</small></button>
+  <div class="famSwitch" id="famSwitch" title="Картинки или видео. У каждой нейросети свои модели, промпт, LoRA и настройки — они запоминаются отдельно.">
+    <button data-kind="image" class="on" title="Картинки — Qwen‑Image 2.1, Krea 2 или FLUX.3 Klein">🖼 Картинки</button>
+    <button data-kind="video" title="Видео со звуком — MiniMax H3 или LTX‑2.5">🎬 Видео</button>
+    <button data-view="voice" id="voiceTab" title="Голос: переозвучка роликов и озвучка текста голосом эталона">🎙 Голос</button>
+    <button data-view="speech" id="spTab" title="Речь: генератор голоса Higgs TTS 3 — текст с эмоциями и звуками → речь, свои голоса, диалоги">🗣 Речь</button>
+    <button data-view="music" id="muTab" title="Музыка: песни с вокалом и инструментал — ACE‑Step, MiniMax Music 3, YuE2, Stable Audio 3">🎵 Музыка</button>
+    <button data-view="3d" id="t3Tab" title="3D: модель объекта по картинкам‑ракурсам (Hunyuan3D)">🧊 3D</button>
+  </div>
+  <div class="status" id="engineStatus"><span class="dot"></span><span class="txt">…</span></div>
+  <nav>
+    <button class="ghost" data-open="modelsDlg">Модели</button>
+    <button class="ghost" id="labBtn" title="Оценки, разговор с помощником о результатах, свод правил">🧪 Мастерская</button>
+    <button class="ghost" id="galleryBtn">Галерея</button>
+    <button class="ghost" data-open="settingsDlg">Настройки</button>
+    <button class="ghost" id="logBtn">Журнал</button>
+  </nav>
+</header>
+
+<main class="layout">
+  <!-- ============ ЛЕВАЯ ПАНЕЛЬ ============ -->
+  <aside class="panel" id="panel">
+    <section class="card">
+      <h3>Модели <button class="link" data-open="modelsDlg">управление →</button></h3>
+      <div class="seg subFam" id="subFam" title="Нейросеть внутри вкладки. У каждой свои модели, промпт, LoRA и настройки — они запоминаются отдельно."></div>
+      <label class="notRef">Модель (diffusion)<select id="unet"></select></label>
+      <label class="onlyRef">Модель для референсов (Ref2VA)<select id="unetRef"></select></label>
+      <label>Текстовый энкодер<select id="clip"></select></label>
+      <label>VAE<span class="onlyMM muted tiny"> (видео)</span><select id="vae"></select></label>
+      <label class="onlyMM">Аудио‑VAE<select id="avae"></select></label>
+      <label class="onlyLTX">Апскейлер (×2)<select id="upscaler"></select></label>
+      <div class="warn hidden" id="pairWarn"></div>
+      <div class="warn hidden" id="ggufBox"></div>
+      <div class="error hidden" id="famWarn"></div>
+      <details class="adv"><summary>Точность весов</summary>
+        <label>weight_dtype<select id="weight_dtype">
+          <option value="default">default (как в файле)</option>
+          <option value="fp8_e4m3fn">fp8_e4m3fn</option>
+          <option value="fp8_e4m3fn_fast">fp8_e4m3fn_fast (RTX 40/50)</option>
+          <option value="fp8_e5m2">fp8_e5m2</option>
+        </select></label>
+      </details>
+    </section>
+
+    <section class="card" id="cardInput">
+      <h3>Вход</h3>
+      <div class="switches">
+        <label class="sw"><input type="checkbox" id="useText" checked><span class="knob"></span>Текст</label>
+        <label class="sw onlyQ"><input type="checkbox" id="useImage"><span class="knob"></span>Изображение</label>
+      </div>
+      <div class="modehint" id="modeHint"></div>
+
+      <div id="textBlock">
+        <label>Промпт<textarea id="prompt" rows="5" placeholder="Опишите изображение… (Ctrl+Enter — генерировать)"></textarea></label>
+        <div class="atPop hidden" id="atPop"></div>
+        <div class="refChips onlyRef" id="refChips"></div>
+        <div class="trigWarn hidden" id="trigWarn"></div>
+        <div class="assist">
+          <button class="small" id="aiEnhance" title="Локальная нейросеть перепишет идею в подробный промпт с учётом включённых LoRA и их триггер-слов">✨ Улучшить</button>
+          <button class="small" id="aiRandom" title="Ваши слова остаются, а позу, место, действие, свет, ракурс и стиль помощник придумывает сам — каждый раз по-новому">🎲 Рандом</button>
+          <button class="small" id="aiVariants" title="Несколько разных вариантов промпта на выбор">📋 Варианты</button>
+          <button class="small" id="aiDescribe" title="Описать загруженную картинку промптом (нужна модель со зрением)">🖼 Описать</button>
+          <button class="small" id="aiChat" title="Обсудить промпт с помощником">💬 Чат</button>
+          <select id="aiDetail" title="Длина промпта"><option value="short">кратко</option><option value="medium" selected>средне</option><option value="long">подробно</option></select>
+          <button class="icon" id="aiSettings" title="Настройки помощника">⚙</button>
+        </div>
+        <div class="censor" title="Что помощник добавляет сам. Ваши собственные слова он никогда не убирает. Только взрослые персонажи — на любом уровне.">
+          <span>Цензура</span>
+          <input type="range" id="aiCensor" min="0" max="4" step="1" value="4">
+          <span class="cv" id="aiCensorV"></span>
+        </div>
+        <div class="aiOut hidden" id="aiOut"></div>
+        <details class="adv hasNeg" id="negBox"><summary>Негативный промпт <span class="muted">(работает при CFG &gt; 1)</span></summary>
+          <textarea id="negative" rows="2" placeholder="чего не должно быть"></textarea>
+        </details>
+      </div>
+
+      <div id="framesBlock" class="onlyMM">
+        <div class="durRow" title="Длительность видео. Модель обучена на 5–15 с; 5 с — быстрее всего, короче 5 с качество хуже.">
+          <span>Длительность</span><input type="range" id="duration" min="3" max="15" step="1" value="5"><b id="durV">5 с</b>
+        </div>
+        <div class="seg onlyH3" id="mmMode">
+          <button data-v="frames" class="on" title="Текст → видео, первый и/или последний кадр (модель FL2VA)">🎞 Кадры</button>
+          <button data-v="ref" title="До 9 картинок: люди, места, предметы, стиль — в промпте @img1, @img2… (модель Ref2VA)">🧩 Референсы</button>
+        </div>
+        <div class="frames notRef">
+          <div class="frame"><div class="fh">Первый кадр</div><div class="fbox" id="frFirst" data-slot="first"></div></div>
+          <div class="frame"><div class="fh">Последний кадр</div><div class="fbox" id="frLast" data-slot="last"></div></div>
+        </div>
+        <input type="file" id="frFile" accept="image/*" hidden>
+        <div class="onlyLTX ltxOpts">
+          <label class="inl" title="Двухэтапно: сначала половинное разрешение, затем латентный апскейлер ×2 и короткая доводка. Быстрее и чётче, чем сразу в полном размере. Не работает с последним кадром."><input type="checkbox" id="ltxTwo" checked> ⤢ Апскейл ×2 (двухэтапно)</label>
+          <label class="row" title="Насколько видео держится за первый кадр на первом этапе. 1 — кадр «прибит», меньше — больше свободы движения.">Сила первого кадра <span class="val" id="ltxSrcV">0.70</span></label>
+          <input type="range" id="ltxSrc" min="0.3" max="1" step="0.05" value="0.7">
+          <label class="row" title="После апскейла исходная картинка вшивается в первый кадр ещё раз — детали и лицо из исходника не теряются при увеличении. 0 — выключено.">Упор на исходник после апскейла <span class="val" id="ltxAnchorV">1.00</span></label>
+          <input type="range" id="ltxAnchor" min="0" max="1" step="0.05" value="1">
+        </div>
+        <div class="onlyRef" id="refsBlock">
+          <div class="refGrid" id="refGrid"></div>
+          <input type="file" id="refFile" accept="image/*" multiple hidden>
+          <label class="inl" title="Референсы подаются в полном размере (до 2048 px) — лица и мелкие детали похожее, но генерация в разы медленнее"><input type="checkbox" id="refMax"> Точное сходство (медленнее)</label>
+          <p class="muted tiny">До 9 картинок. В промпте ссылайтесь на них: наберите <b>@</b> — появится список. Например: «@img2 идёт по @img1 и машет рукой». Подпись под картинкой («локация», «Маша») помощник и модель используют как описание.</p>
+        </div>
+        <p class="muted tiny notRef" id="framesHint">Без кадров — видео по тексту. С первым кадром — видео начинается с картинки. С обоими — плавный переход от первого к последнему. Размер видео подстраивается под пропорции кадра.</p>
+      </div>
+
+      <div id="imageBlock" class="hidden onlyQ">
+        <div class="seg" id="imageMode">
+          <button data-v="reference" class="on">Референс / редактирование</button>
+          <button data-v="img2img">img2img</button>
+        </div>
+        <div class="drop" id="imgDrop">
+          <input type="file" id="imgFile" accept="image/*" multiple hidden>
+          <div class="thumbs" id="imgThumbs"></div>
+          <div class="dropTxt">Перетащите картинку сюда или <u>выберите файл</u><br><span class="muted" id="imgLimit">до 4 референсов · можно вставить из буфера Ctrl+V</span></div>
+        </div>
+        <div id="refOpts">
+          <label class="row">Размер референса <span class="val"><input type="number" id="refMp" value="1" step="0.25" min="0.25" max="4"> Мп</span></label>
+        </div>
+        <div id="i2iOpts" class="hidden">
+          <label class="row">Denoise (сила изменения) <span class="val" id="denoiseV">0.60</span></label>
+          <input type="range" id="denoise" min="0.05" max="1" step="0.01" value="0.6">
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="cardRes">
+      <p class="muted tiny onlyLTX">LTX‑2.5: 24 к/с, стороны кратны 64 (с апскейлом). Рекомендуется 1280×704 (16:9) или 704×1280; если задан кадр — пропорции берутся по нему.</p>
+      <p class="muted tiny onlyH3">MiniMax H3 работает в родном размере: 768 по короткой стороне (16:9 → 1344×768). Если задан кадр, пропорции берутся по нему.</p>
+      <h3>Разрешение <span class="muted" id="mpInfo"></span></h3>
+      <div class="ratios" id="ratios"></div>
+      <div class="wh">
+        <label>Ширина<input type="number" id="width" value="1216" step="32" min="64" max="8192"></label>
+        <div class="whBtns"><button class="icon on" id="lockAR" title="">🔒</button><button class="icon" id="swapWH" title="Поменять местами">⇄</button></div>
+        <label>Высота<input type="number" id="height" value="1984" step="32" min="64" max="8192"></label>
+      </div>
+      <div class="rowbtns onlyQ">
+        <select id="mpSel" title="Базовый размер для пропорций">
+          <option value="0.5">≈0.5 Мп</option><option value="1" selected>≈1 Мп</option>
+          <option value="1.5">≈1.5 Мп</option><option value="2">≈2 Мп</option><option value="2.4">≈2.4 Мп</option><option value="4">≈4 Мп</option>
+        </select>
+        <button class="small" id="fromImage" disabled>Как у входной картинки</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Генерация</h3>
+      <div class="grid2">
+        <label>Шаги<input type="number" id="steps" value="4" min="1" max="200"></label>
+        <label class="onlyQ" id="cfgBox">CFG<input type="number" id="cfg" value="1.1" step="0.1" min="0" max="30"></label>
+        <label class="onlyQ">Семплер<select id="sampler"></select></label>
+        <label class="onlyQ">Планировщик<select id="scheduler"></select></label>
+        <label class="onlyQ">Кол-во картинок<input type="number" id="batch" value="1" min="1" max="16"></label>
+        <label>Seed
+          <div class="seed"><input type="number" id="seed" value="-1"><button class="icon" id="seedRand" title="Случайный (-1)">🎲</button><button class="icon" id="seedLast" title="Взять последний">↺</button></div>
+        </label>
+      </div>
+      <label class="inl onlyH3" title="Официальная турбо‑LoRA: 8 шагов вместо 20 — в 2–2.5 раза быстрее, качество близкое. Файл качается в «Модели»."><input type="checkbox" id="turbo" checked> ⚡ Турбо <span class="muted tiny">(кадры — 8 шагов, референсы — 4; шаги ставятся сами)</span></label>
+      <div class="presets" id="presets"></div>
+    </section>
+
+    <section class="card onlyQ onlyQwen" id="cardChar">
+      <h3>Персонаж (лицо) <button class="link" id="charManage">все персонажи →</button></h3>
+      <div id="charSel"></div>
+      <label class="inl charOpt"><input type="checkbox" id="charPhrase" checked> добавлять фразу о сходстве</label>
+      <p class="muted tiny">Фото лица подаётся модели как референс — лицо держится от генерации к генерации. Работает и в Редакторе, а во вкладке «🙂 Замена лица» лицо персонажа можно поставить на любую картинку.</p>
+    </section>
+
+    <section class="card">
+      <h3>LoRA <span class="muted" id="loraCount"></span></h3>
+      <div id="loraList" class="lcards"></div>
+      <div id="loraTips" class="loraTips hidden"></div>
+      <p class="muted tiny">Применяются по порядку номеров (#1, потом #2…), одна поверх другой. Порядок меняется перетаскиванием карточки.</p>
+    </section>
+  </aside>
+
+  <!-- ============ ЦЕНТР ============ -->
+  <section class="stage">
+    <div class="modeTabs"><button data-mode="gen" class="on">🎨 Генерация</button><button data-mode="edit" class="onlyQ">✏ Редактор</button><button data-mode="face" class="onlyQ">🙂 Замена лица</button></div>
+    <div class="actions" id="genActions">
+      <button class="primary" id="genBtn">Сгенерировать <kbd>Ctrl+Enter</kbd></button>
+      <button class="danger hidden" id="stopBtn">Стоп</button>
+      <button class="ghost" id="freeBtn" title="Выгрузить модели из видеопамяти">Освободить VRAM</button>
+      <button class="ghost hidden onlyQ" id="toEditor" title="Открыть эту картинку в редакторе">✏ Редактировать</button>
+      <button class="ghost hidden onlyQ" id="toFace" title="Заменить лицо на этой картинке">🙂 Заменить лицо</button>
+      <button class="ghost hidden onlyQ" id="saveFace" title="Сохранить лицо с этой картинки как персонажа">🙂 Сохранить лицо</button>
+      <span class="toVideo hidden" id="toVideo"><span class="muted tiny">🎬 В видео:</span><button class="ghost small" data-slot="first" title="Перенести картинку в MiniMax H3 как первый кадр — видео начнётся с неё">первым кадром</button><button class="ghost small" data-slot="last" title="Перенести картинку в MiniMax H3 как последний кадр — видео закончится ею">последним</button><button class="ghost small" data-slot="ref" title="Добавить картинку в референсы MiniMax H3 (@img…) — человек, место или предмет для нового видео">референсом</button></span>
+      <span class="vidTools hidden" id="vidTools"><button class="ghost" id="grabEdit" title="Взять кадр, на котором стоит видео, и открыть в Редакторе (Qwen)">📸 Кадр → Редактор</button><button class="ghost small" id="grabFirst" title="Этот кадр станет первым кадром нового видео (продолжение)">⏭ Кадр → первый</button><button class="ghost small" id="grabLast" title="Этот кадр станет последним кадром нового видео">⏮ Кадр → последний</button><button class="ghost small onlyH3" id="grabRef" title="Этот кадр — в референсы (@img…)">🧩 Кадр → референс</button><button class="ghost small" id="toVoice" title="Отправить это видео во вкладку «Голос» — заменить голос на эталонный">🎙 → Голос</button></span>
+    </div>
+    <div class="progress hidden" id="progress"><div class="bar"><i id="pbar"></i></div><span id="ptxt"></span></div>
+    <div class="error hidden" id="err"></div>
+    <div class="warnbox hidden" id="warnBox"></div>
+    <div class="rateBar hidden" id="rateBar">
+      <div class="rtop">
+        <span class="rlbl">Оценка</span>
+        <span class="stars" id="rateStars"><button data-star="1" title="1 из 5">★</button><button data-star="2" title="2 из 5">★</button><button data-star="3" title="3 из 5">★</button><button data-star="4" title="4 из 5">★</button><button data-star="5" title="5 из 5">★</button></span>
+        <input id="rateComment" placeholder="Комментарий (необязательно): что хорошо / что плохо. Настройки и цифры запишутся сами">
+        <span class="autoScore hidden" id="rateAuto"></span>
+        <span class="muted tiny" id="rateState"></span>
+        <button class="small" id="rateLab" title="Обсудить эту картинку с помощником в Мастерской">🧪 Обсудить</button>
+      </div>
+      <div class="rtags" id="rateTags"></div>
+    </div>
+    <div id="editorView" class="editor hidden">
+      <div class="edToolbar">
+        <button class="small" id="edOpen">📂 Открыть</button><input type="file" id="edFile" accept="image/*" hidden>
+        <button class="small" id="edFromResult" title="Взять картинку, открытую во вкладке «Генерация»">⤵ Из генерации</button>
+        <span class="sep"></span>
+        <button class="small on" id="edBrush" title="Кисть (B)">🖌 Кисть</button>
+        <button class="small" id="edEraser" title="Ластик (E)">🧽 Ластик</button>
+        <label class="inl">Размер <input type="range" id="edSize" min="4" max="300" value="60"></label>
+        <button class="small" id="edUndo" title="Отменить мазок (Ctrl+Z)">↶</button>
+        <button class="small" id="edInvert">Инвертировать</button>
+        <button class="small" id="edClear">Очистить маску</button>
+        <label class="inl"><input type="checkbox" id="edShowMask" checked> маска</label>
+        <span class="sep"></span>
+        <button class="small" id="edBefore" title="Удерживайте, чтобы увидеть исходник">👁 До</button>
+        <button class="small" id="edBack" title="Вернуться к предыдущей версии">↩ Шаг назад</button>
+        <span class="toVideo" id="edToVideo"><span class="muted tiny">🎬 В видео:</span><button class="small" data-slot="first" title="Отправить эту версию картинки в MiniMax H3 первым кадром">первым кадром</button><button class="small" data-slot="last" title="Отправить эту версию в MiniMax H3 последним кадром">последним</button><button class="small" data-slot="ref" title="Добавить эту версию в референсы MiniMax H3 (@img…)">референсом</button></span>
+        <button class="small" id="edCut" title="Сравнить картинку до и после правки и оставить только изменения — на прозрачном фоне (PNG) или как маску">✂ Вырезать изменения</button>
+      </div>
+      <div class="edWrap" id="edWrap">
+        <div class="edStack hidden" id="edStack"><canvas id="edImg"></canvas><canvas id="edMask"></canvas><div id="fsBoxes" class="hidden"></div><div id="edCursor"></div></div>
+        <div class="empty" id="edEmpty"><div class="big">Откройте картинку для правки</div><div class="muted">📂 Открыть, перетащить файл сюда, Ctrl+V, или «⤵ Из генерации».<br>Маска необязательна: без неё правится вся картинка по инструкции.</div></div>
+      </div>
+      <div class="edBottom">
+        <textarea id="edInstr" rows="2" placeholder="Что изменить? Например: замени футболку на чёрную кожаную куртку (можно по-русски). Ctrl+Enter — применить"></textarea>
+        <div class="edOpts">
+          <label class="inl" title="Локальная нейросеть посмотрит на картинку и выделенную область и напишет точную инструкцию для Qwen"><input type="checkbox" id="edRefine" checked> ✨ Уточнить инструкцию ИИ</label>
+          <button class="small" id="edRefineOnly">Показать, как ИИ поймёт</button>
+          <details class="adv edAdv"><summary>Параметры</summary>
+            <div class="grid2">
+              <label>Расширить маску, px<input type="number" id="edGrow" value="12" min="0" max="200"></label>
+              <label>Растушёвка краёв, px<input type="number" id="edFeather" value="16" min="0" max="200"></label>
+              <label title="Сколько окружения вокруг маски видит модель (доля размера маски)">Контекст вокруг маски<input type="number" id="edContext" value="0.6" step="0.1" min="0" max="3"></label>
+              <label title="Разрешение, в котором модель рисует. С маской — размер вырезанной области">Разрешение работы, Мп<input type="number" id="edMp" value="1" step="0.25" min="0.25" max="2.5"></label>
+              <label title="1 — полностью перерисовать область; меньше — сохранить больше от исходника">Сила (denoise, с маской)<input type="number" id="edDenoise" value="1" step="0.05" min="0.05" max="1"></label>
+            </div>
+            <p class="muted tiny">Модель, шаги, CFG, семплер, seed и LoRA берутся из левой панели. Без маски правится вся картинка в её исходном размере (до 2.5 Мп).</p>
+          </details>
+          <button class="danger stopBig hidden" id="edStop">■ Стоп</button>
+          <button class="primary" id="edRun">Применить правку</button>
+        </div>
+        <div class="muted tiny" id="edInfo"></div>
+      </div>
+      <div class="fsBottom hidden" id="fsBottom">
+        <div class="fsDonor">
+          <div class="seg" id="fsSrcSeg"><button data-v="photo" class="on">Фото лица</button><button data-v="char">Персонаж</button></div>
+          <div id="fsPhotoBox">
+            <div class="fsDrop" id="fsDrop" title="Фото человека, чьё лицо поставить. Лучше крупное, чёткое, анфас или 3/4">
+              <input type="file" id="fsFile" accept="image/*" hidden>
+              <div class="fsDonorView" id="fsDonorView"><span class="muted">Перетащите фото нового лица<br>или <u>выберите файл</u></span></div>
+            </div>
+          </div>
+          <div id="fsCharBox" class="hidden">
+            <select id="fsChar"></select>
+            <div class="fsDonorView" id="fsCharPrev"></div>
+          </div>
+        </div>
+        <div class="fsOpts">
+          <div class="fsDet" id="fsDet"></div>
+          <div class="seg" id="fsArea"><button data-v="face" class="on" title="Меняются черты лица, причёска остаётся">Только лицо</button><button data-v="head" title="Меняется и причёска — берётся с фото нового лица">Лицо + волосы</button></div>
+          <label class="inl" title="Размытое старое лицо подсказывает модели мимику: улыбка, открытый рот, прищур"><input type="checkbox" id="fsExpr" checked> сохранить выражение лица</label>
+          <label class="row" title="1 — лицо рисуется заново целиком (лучшее сходство); меньше — ближе к старому лицу">Сила замены <span class="val" id="fsStrV">1.00</span></label>
+          <input type="range" id="fsStr" min="0.5" max="1" step="0.05" value="1">
+          <input id="fsExtra" placeholder="Доп. пожелание (необязательно), например: лёгкая улыбка, без макияжа">
+          <details class="adv"><summary>Параметры</summary>
+            <div class="grid2">
+              <label title="В каком разрешении рисуется область лица">Разрешение работы, Мп<input type="number" id="fsMp" value="1" step="0.25" min="0.5" max="2"></label>
+              <label title="Сколько окружения вокруг лица видит модель (доля размера лица)">Контекст вокруг лица<input type="number" id="fsCtx" value="1" step="0.1" min="0.3" max="3"></label>
+            </div>
+            <p class="muted tiny">Модель, шаги, CFG, семплер, seed и LoRA — из левой панели.</p>
+          </details>
+          <div class="rowbtns"><button class="danger stopBig hidden" id="fsStop">■ Стоп</button><button class="primary" id="fsRun">🙂 Заменить лицо</button></div>
+        </div>
+        <div class="muted tiny fsInfo" id="fsInfo"></div>
+      </div>
+    </div>
+    <div class="viewer" id="viewer">
+      <div class="empty" id="emptyMsg">
+        <div class="big">Здесь появится изображение</div>
+        <div class="muted" id="setupHint"></div>
+      </div>
+      <img id="mainImg" class="hidden" alt="">
+      <video id="mainVideo" class="hidden" controls loop playsinline preload="metadata"></video>
+    </div>
+    <div class="strip" id="strip"></div>
+    <div class="meta muted" id="meta"></div>
+  </section>
+</main>
+
+<!-- ============ ГОЛОС ============ -->
+
+
+<!-- ============ ВКЛАДКА «РЕЧЬ» (Higgs TTS 3) ============ -->
+<main class="spView" id="spView">
+  <aside class="panel sppanel">
+    <section class="card">
+      <h3>Higgs TTS 3 <span class="muted tiny">Boson AI · 4B · 100+ языков</span></h3>
+      <div id="spInstall"></div>
+    </section>
+    <section class="card">
+      <h3>Голос</h3>
+      <select id="spVoice"></select>
+      <div id="spVoiceBox" class="hidden spVoiceBox">
+        <audio id="spVoicePlay" controls preload="none"></audio>
+        <label>Имя <span class="muted tiny">— по нему голос зовётся в диалоге</span><input id="spVName" maxlength="40"></label>
+        <label>Что говорится в образце <span class="muted tiny">(точный текст = больше похожести)</span><textarea id="spVText" rows="2"></textarea></label>
+        <div class="row2"><button class="small" id="spVSave">✓ Сохранить</button><button class="small ghost" id="spVDel" title="Удалить голос из библиотеки">🗑 Удалить</button></div>
+      </div>
+      <p class="muted tiny" id="spRandHint">Случайный голос: каждый «вариант» (seed) — новый человек. Понравился — нажмите у результата «💾 Сохранить голос».</p>
+      <details class="spNew" id="spNew">
+        <summary>＋ Новый голос из записи (клонирование)</summary>
+        <div class="drop vdrop" id="spDrop">Перетащите звук или видео, где человек говорит<br><span class="muted tiny">или нажмите, чтобы выбрать · нужно 5–15 с чистой речи без музыки</span></div>
+        <input type="file" id="spFile" accept="video/*,audio/*" hidden>
+        <div id="spSrcBox" class="hidden">
+          <div class="vRefHead"><b id="spSrcName"></b><button class="icon" id="spSrcX" title="Убрать">✕</button></div>
+          <video id="spSrcPlayer" controls preload="metadata"></video>
+          <div class="vRange">
+            <label>Начало, с<input type="number" id="spStart" min="0" step="0.1" value="0"></label>
+            <button class="small" id="spSetStart" title="Взять текущую позицию плеера">⇤ отсюда</button>
+            <label>Конец, с<input type="number" id="spEnd" min="0" step="0.1" value="0"></label>
+            <button class="small" id="spSetEnd" title="Взять текущую позицию плеера">⇥ досюда</button>
+          </div>
+          <div class="muted tiny" id="spLen"></div>
+          <label>Имя голоса<input id="spNewName" maxlength="40" placeholder="Анна, Рассказчик, Босс…"></label>
+          <label>Текст образца <span class="muted tiny" id="spNewTextHint">(необязательно)</span><textarea id="spNewText" rows="2" placeholder="Что говорится в выбранном отрезке"></textarea></label>
+          <button class="primary" id="spNewGo">🎤 Создать голос</button>
+          <div class="tiny" id="spNewSt"></div>
+        </div>
+      </details>
+      <p class="muted tiny spLic">Клонируйте только свой голос или голос человека, который разрешил. Модель некоммерческая; в роликах укажите «Озвучка: Higgs Audio (Boson AI)».</p>
+    </section>
+    <section class="card">
+      <h3>Параметры</h3>
+      <div class="vSl" title="Насколько свободно модель интонирует. Ниже — ровнее и стабильнее, выше — живее, но чаще ошибки. 0.8 — по умолчанию"><span>Живость</span><input type="range" id="spTemp" min="0.3" max="1.2" step="0.05" value="0.8"><b id="spTempV">0.8</b></div>
+      <div class="vSl" title="Пауза между фразами (длинный текст режется по предложениям)"><span>Пауза между фразами, с</span><input type="range" id="spGap" min="0" max="1.2" step="0.05" value="0.25"><b id="spGapV">0.25</b></div>
+      <div class="vSl" title="Номер варианта. -1 — каждый раз новый; одинаковый номер — тот же результат (и тот же случайный голос)"><span>Вариант (seed)</span><input type="number" id="spSeed" value="-1" style="flex:1"><button class="small" id="spSeedRnd" title="Новый вариант">🎲</button></div>
+      <details class="adv"><summary>Тонкие настройки</summary>
+        <div class="grid2">
+          <label title="Отсекать маловероятные звуки (0.8 — по умолчанию)">top‑p<input type="number" id="spTopP" min="0.1" max="1" step="0.05" value="0.8"></label>
+          <label title="Сколько вариантов звука рассматривать на шаг (30 — по умолчанию, 0 — без ограничения)">top‑k<input type="number" id="spTopK" min="0" max="1026" step="1" value="30"></label>
+          <label title="Пауза между абзацами и сменой говорящего">Пауза абзаца, с<input type="number" id="spPGap" min="0" max="5" step="0.1" value="0.6"></label>
+          <label title="Громкость результата, дБ">Громкость, дБ<input type="number" id="spGain" min="-18" max="18" step="1" value="0"></label>
+        </div>
+      </details>
+    </section>
+    <button class="primary big" id="spGo">🗣 Озвучить <kbd>Ctrl+Enter</kbd></button>
+    <div class="progress hidden" id="spProg"><div class="bar"><i id="spBar"></i></div><span id="spTxt"></span> <button class="link" id="spStop">стоп</button></div>
+    <div class="error hidden" id="spErr"></div>
+  </aside>
+  <section class="spstage">
+    <div class="spTags" id="spTags"></div>
+    <textarea id="spText" rows="9" placeholder="Впишите текст на любом языке — он будет озвучен выбранным голосом.&#10;&#10;Эмоции и подача — кнопками сверху: тег ставится в начало предложения и действует, пока его не сменит другой тег или «↺ Нейтрально». Звуки (смех, вздох) и паузы — туда, где стоит курсор.&#10;&#10;Диалог — каждая реплика с новой строки:&#10;[Анна] Ты это слышал?&#10;[Босс] <|emotion:anger|>Конечно слышал!&#10;Имена — из библиотеки голосов; незнакомое имя получит свой случайный голос."></textarea>
+    <div class="spInfo"><span class="muted tiny" id="spCount"></span><span class="t3btns"><button class="ghost small" id="spClear">Очистить</button><button class="ghost small" data-openfolder="speech">📂 Папка</button></span></div>
+    <div class="muList" id="spList"></div>
+  </section>
+</main>
+
+<!-- ============ ВКЛАДКА «МУЗЫКА» ============ -->
+<main class="muView" id="muView">
+  <aside class="panel mupanel">
+    <section class="card">
+      <h3>Нейросеть <button class="link" id="muModels">скачать →</button></h3>
+      <div class="seg muEng" id="muEng">
+        <button data-e="ace" title="Быстрая, поёт по‑русски, до 10 минут">ACE‑Step 1.5</button>
+        <button data-e="mm3" title="Чистый звук, до 5 минут">MiniMax Music 3</button>
+        <button data-e="yue2" title="Сильный вокал (англ./кит.), некоммерческая">YuE2</button>
+        <button data-e="sa3" title="Инструментал и звуки, без вокала">Stable Audio 3</button>
+      </div>
+      <label id="muModelBox">Модель<select id="muModel"></select></label>
+      <p class="muted tiny" id="muEngHint"></p>
+    </section>
+    <section class="card">
+      <h3>Песня</h3>
+      <label>Идея для помощника <span class="muted tiny">(можно по‑русски)</span><input id="muIdea" placeholder="грустная инди‑песня про осенний город, женский вокал"></label>
+      <div class="assist"><button class="small" id="muAi" title="Локальный помощник напишет стиль и текст песни по правилам выбранной нейросети">✨ Придумать стиль и текст</button><span class="tiny" id="muAiSt"></span></div>
+      <label>Стиль <span class="muted tiny" id="muTagsHint"></span><textarea id="muTags" rows="3"></textarea></label>
+      <label class="inl" id="muInstBox"><input type="checkbox" id="muInst"> Инструментал (без вокала)</label>
+      <label id="muLyrBox">Текст песни <span class="muted tiny">— разметка: [Verse], [Chorus], [Bridge], [Outro]</span><textarea id="muLyr" rows="9" placeholder="[Verse]&#10;Первая строчка куплета&#10;Вторая строчка&#10;&#10;[Chorus]&#10;Припев…"></textarea></label>
+    </section>
+    <section class="card">
+      <h3>Параметры</h3>
+      <div class="durRow"><span>Длительность</span><input type="range" id="muDur" min="10" max="600" step="5" value="120"><b id="muDurV">2:00</b></div>
+      <div class="grid2 muAce">
+        <label>Язык вокала<select id="muLang">
+          <option value="ru">русский</option><option value="en">английский</option><option value="uk">украинский</option><option value="de">немецкий</option>
+          <option value="es">испанский</option><option value="fr">французский</option><option value="it">итальянский</option><option value="ja">японский</option>
+          <option value="ko">корейский</option><option value="zh">китайский</option><option value="unknown">другой / без слов</option></select></label>
+        <label>Темп, BPM<input type="number" id="muBpm" value="120" min="30" max="300"></label>
+        <label>Тональность<select id="muKey"></select></label>
+        <label>Размер<select id="muSig"><option value="4">4/4</option><option value="3">3/4</option><option value="6">6/8</option><option value="2">2/4</option></select></label>
+      </div>
+      <details class="adv"><summary>Тонкие настройки</summary>
+        <div class="grid2">
+          <label>Шаги<input type="number" id="muSteps" placeholder="авто" min="1" max="200"></label>
+          <label>Seed<div class="seed"><input type="number" id="muSeed" value="-1"><button class="icon" id="muSeedR" title="Случайный">🎲</button></div></label>
+        </div>
+      </details>
+    </section>
+    <button class="primary big" id="muGo">🎵 Сочинить <kbd>Ctrl+Enter</kbd></button>
+    <div class="progress hidden" id="muProg"><div class="bar"><i id="muBar"></i></div><span id="muTxt"></span> <button class="link" id="muStop">стоп</button></div>
+    <div class="error hidden" id="muErr"></div>
+  </aside>
+  <section class="mustage">
+    <div class="t3tools"><span class="muted">Готовые треки — новые сверху. Файлы MP3 лежат в output\music.</span>
+      <span class="t3btns"><button class="ghost small" data-openfolder="music">📂 Папка</button></span></div>
+    <div class="muList" id="muList"></div>
+  </section>
+</main>
+
+<!-- ============ ВКЛАДКА «3D» (Hunyuan3D) ============ -->
+<main class="t3View" id="t3View">
+  <aside class="panel t3panel">
+    <section class="card">
+      <h3>Модель <button class="link" id="t3Models">скачать →</button></h3>
+      <label>Hunyuan3D<select id="t3Model"></select></label>
+      <p class="muted tiny" id="t3ModelHint"></p>
+    </section>
+    <section class="card">
+      <h3>Ракурсы объекта</h3>
+      <p class="muted tiny">Один и тот же объект с разных сторон. «Спереди» обязательно, остальные — по желанию: чем больше сторон, тем точнее форма сзади и сбоку. Перетащите картинку, нажмите на окно или вставьте Ctrl+V (в первое пустое).</p>
+      <div class="t3grid" id="t3Grid"></div>
+      <input type="file" id="t3File" accept="image/*" hidden>
+      <label class="inl" title="Нейросеть ISNet вырезает объект и кладёт его на белый фон по центру — так Hunyuan3D понимает форму лучше всего"><input type="checkbox" id="t3Bg" checked> Убрать фон автоматически</label>
+      <div class="tiny" id="t3BgSt"></div>
+    </section>
+    <section class="card">
+      <h3>Качество сетки</h3>
+      <div class="seg" id="t3Q">
+        <button data-q="fast" class="on" title="Сетка 256 — быстро, для проверки ракурсов">Черновик</button>
+        <button data-q="mid" title="Сетка 384">Средне</button>
+        <button data-q="high" title="Сетка 512 — больше деталей, дольше и больше памяти">Высокое</button>
+      </div>
+      <details class="adv"><summary>Тонкие настройки</summary>
+        <div class="grid2">
+          <label>Шаги<input type="number" id="t3Steps" placeholder="авто" min="1" max="100"></label>
+          <label>Seed<div class="seed"><input type="number" id="t3Seed" value="-1"><button class="icon" id="t3SeedR" title="Случайный">🎲</button></div></label>
+        </div>
+        <label class="row">Порог поверхности <span class="val" id="t3ThV">0.60</span></label>
+        <input type="range" id="t3Th" min="0.3" max="0.9" step="0.05" value="0.6">
+        <p class="muted tiny">Меньше — объект толще и сплошнее, больше — тоньше, но могут появиться дыры.</p>
+      </details>
+    </section>
+    <button class="primary big" id="t3Go">🧊 Построить 3D‑модель <kbd>Ctrl+Enter</kbd></button>
+    <div class="progress hidden" id="t3Prog"><div class="bar"><i id="t3Bar"></i></div><span id="t3Txt"></span> <button class="link" id="t3Stop">стоп</button></div>
+    <div class="error hidden" id="t3Err"></div>
+  </aside>
+  <section class="t3stage">
+    <div class="t3tools">
+      <span class="muted" id="t3Info">Модель появится здесь. Крутите мышью, колёсико — приближение.</span>
+      <span class="t3btns">
+        <button class="ghost small" id="t3Wire" title="Показать сетку">Сетка</button>
+        <a class="ghost small btnlink hidden" id="t3Dl" download>⬇ Скачать GLB</a>
+        <button class="ghost small" data-openfolder="mesh">📂 Папка</button>
+      </span>
+    </div>
+    <div class="t3viewer" id="t3Viewer">
+      <model-viewer id="t3MV" camera-controls auto-rotate shadow-intensity="0.8" exposure="1" environment-image="neutral" interaction-prompt="none" style="background:transparent"></model-viewer>
+      <div class="t3empty" id="t3Empty"><div class="big">🧊</div>Добавьте ракурсы слева и нажмите «Построить».<br><span class="muted tiny">Результат — файл .glb: открывается в Blender, Cinema 4D, Unreal, Unity, Windows «Средство 3D‑просмотра».</span></div>
+    </div>
+    <div class="t3strip" id="t3Strip"></div>
+  </section>
+</main>
+
+<main class="voiceView" id="voiceView">
+  <aside class="panel vpanel">
+    <section class="card" id="vInstallCard">
+      <h3>Голосовой модуль</h3>
+      <div id="vInstall"></div>
+    </section>
+    <section class="card">
+      <h3>1 · Голос (эталон)</h3>
+      <div class="vRefTabs" id="vRefTabs"></div>
+      <div class="vRefLab"><label>Название эталона<input id="vRefLabel" placeholder="обычный, крик, шёпот…"></label><button class="small ghost hidden" id="vRefDel" title="Удалить этот эталон">🗑</button></div>
+      <div class="drop vdrop" id="vRefDrop">Перетащите видео или звук, где персонаж говорит <b>нужным</b> голосом<br><span class="muted tiny">или нажмите, чтобы выбрать · лучше 3–10 с чистой речи</span></div>
+      <input type="file" id="vRefFile" accept="video/*,audio/*" hidden>
+      <div id="vRefBox" class="hidden">
+        <div class="vRefHead"><b id="vRefName"></b><button class="icon" id="vRefX" title="Убрать эталон">✕</button></div>
+        <video id="vRefPlayer" controls preload="metadata"></video>
+        <div class="vRange">
+          <label>Начало, с<input type="number" id="vRefStart" min="0" step="0.1" value="0"></label>
+          <button class="small" id="vRefSetStart" title="Взять текущую позицию плеера">⇤ отсюда</button>
+          <label>Конец, с<input type="number" id="vRefEnd" min="0" step="0.1" value="0"></label>
+          <button class="small" id="vRefSetEnd" title="Взять текущую позицию плеера">⇥ досюда</button>
+        </div>
+        <div class="muted tiny" id="vRefLen"></div>
+        <div class="row2"><button class="small" id="vRefPlaySel">▶ Прослушать отрезок</button>
+          <label class="inl"><input type="checkbox" id="vRefSep" checked> очистить от фона</label></div>
+        <button class="primary" id="vRefGo">🎤 Взять голос</button>
+        <div class="tiny" id="vRefSt"></div>
+        <label id="vRefTextBox" class="hidden">Текст эталона <span class="muted">(распознан сам — поправьте, если ошибся: от точности зависит похожесть)</span>
+          <textarea id="vRefText" rows="3"></textarea></label>
+      </div>
+    </section>
+    <section class="card">
+      <h3>Настройки</h3>
+      <label>Язык речи<select id="vLang">
+        <option value="ru">Русский</option><option value="en">English</option><option value="uk">Українська</option>
+        <option value="de">Deutsch</option><option value="es">Español</option><option value="fr">Français</option>
+        <option value="auto">Определить автоматически</option></select></label>
+      <label class="inl" title="Голос отделяется от музыки и шумов: распознавание точнее, а фон в готовом ролике остаётся как был"><input type="checkbox" id="vSep" checked> Отделять голос от фона (фон останется)</label>
+      <label class="inl" title="Всё, что не попало в фразы (зевки, вздохи, смех, крики без слов), остаётся из ролика. Выключите — между фразами будет только фон"><input type="checkbox" id="vKeepOut" checked> Звуки вне фраз (зевки, вздохи) — из оригинала</label>
+      <div class="vSl" title="Больше шагов — чище, но дольше. 32 — по умолчанию, 16 — быстро"><span>Качество (шаги)</span><input type="range" id="vSteps" min="16" max="64" step="8" value="32"><b id="vStepsV">32</b></div>
+      <div class="vSl" title="Насколько строго держаться голоса эталона и текста. 2 — по умолчанию"><span>Точность</span><input type="range" id="vGuid" min="1" max="4" step="0.25" value="2"><b id="vGuidV">2</b></div>
+      <div class="vSl" title="Номер варианта. -1 — каждый раз новый; одинаковый номер — тот же результат"><span>Вариант (seed)</span><input type="number" id="vSeed" value="-1" style="flex:1"><button class="small" id="vSeedRnd" title="Новый вариант">🎲</button></div>
+    </section>
+  </aside>
+  <section class="stage vstage">
+    <div class="vTop">
+      <h2>2 · Ролики для переозвучки</h2>
+      <div class="actions">
+        <button id="vAsrAll" title="Распознать текст во всех роликах, где его ещё нет">📝 Распознать все</button>
+        <button class="primary" id="vRunAll">🎙 Озвучить все</button>
+        <button class="danger hidden" id="vStop">■ Стоп</button>
+        <button class="ghost" id="vFolder">📂 Результаты</button>
+      </div>
+    </div>
+    <div class="err hidden" id="vErr"></div>
+    <details class="vSay" id="vSay" open>
+      <summary>✍ Просто текст — озвучить без видео</summary>
+      <textarea id="vSayText" rows="3" placeholder="Впишите текст — он будет озвучен голосом эталона. Паузы: [пауза] или [пауза 1.2]; звуки: [laughter] [sigh] [surprise-ah]. Ctrl+Enter — озвучить"></textarea>
+      <div class="vSayRow">
+        <label>Эталон<select id="vSayRef"></select></label>
+        <label title="Пусто — естественная длина. Число — ровно столько секунд (например, чтобы попасть в кусок видео)">Длина, с<input type="number" id="vSayDur" min="0" max="120" step="0.1" placeholder="авто"></label>
+        <label title="Скорость речи, если длина не задана">Темп<select id="vSaySpeed"><option value="0.8">медленно</option><option value="0.9">спокойно</option><option value="1" selected>обычно</option><option value="1.1">бодро</option><option value="1.25">быстро</option></select></label>
+        <label title="Громкость, дБ">Громк.<input type="number" id="vSayGain" min="-18" max="18" step="1" value="0"></label>
+        <button class="primary" id="vSayGo">🎙 Озвучить текст</button>
+      </div>
+      <div class="tiny" id="vSaySt"></div>
+      <div class="vSayRes" id="vSayRes"></div>
+    </details>
+    <div class="drop vdrop" id="vClipDrop">Перетащите сюда ролики (можно сразу несколько) — или нажмите, чтобы выбрать<br><span class="muted tiny">программа достанет звук, распознает текст по фразам — вы поправите текст и нажмёте «Озвучить»; длина и места фраз берутся из ролика</span></div>
+    <input type="file" id="vClipFile" accept="video/*,audio/*" multiple hidden>
+    <div class="vList" id="vList"></div>
+  </section>
+</main>
+
+<!-- ============ МОДЕЛИ ============ -->
+<dialog id="modelsDlg" class="dlg wide">
+  <div class="dlgHead"><h2>Модели, энкодеры, VAE, LoRA</h2><button class="icon" data-close>✕</button></div>
+  <div class="tabs" id="mTabs">
+    <button data-tab="diffusion_models" class="on">Модели</button>
+    <button data-tab="text_encoders">Текст. энкодеры</button>
+    <button data-tab="vae">VAE</button>
+    <button data-tab="loras">LoRA</button>
+    <button data-tab="latent_upscale_models">Апскейлеры</button>
+    <button data-tab="checkpoints">3D‑модели</button>
+    <button data-tab="llm">Помощник (LLM)</button>
+    <button data-tab="catalog">⬇ Скачать рекомендованные</button>
+  </div>
+  <div class="dlgBody">
+    <div id="folderView">
+      <p class="muted" id="folderPath"></p>
+      <div class="filelist" id="fileList"></div>
+      <h4>Добавить свой файл</h4>
+      <div class="addGrid">
+        <div class="drop small" id="modelDrop">
+          <input type="file" id="modelFile" multiple hidden>
+          <div class="dropTxt">Перетащите файл(ы) сюда или <u>выберите</u><br><span class="muted">файл скопируется в папку программы</span></div>
+          <div class="upProg hidden" id="upProg"><div class="bar"><i></i></div><span></span></div>
+        </div>
+        <div class="pathBox">
+          <label>Путь к файлу или папке на диске<input id="impPath" placeholder="например: E:\Downloads\model.safetensors"></label>
+          <div class="rowbtns">
+            <select id="impMode">
+              <option value="link">Связать (без копии, тот же диск)</option>
+              <option value="copy">Скопировать</option>
+              <option value="move">Переместить</option>
+            </select>
+            <button class="small" id="impBtn">Добавить</button>
+          </div>
+          <button class="small" id="openFolderBtn">📂 Открыть папку — просто положите файл туда</button>
+        </div>
+      </div>
+      <h4>Скачать по ссылке</h4>
+      <div class="urlRow">
+        <input id="dlUrl" placeholder="https://huggingface.co/…/file.safetensors  или  https://civitai.com/api/download/models/12345">
+        <input id="dlName" placeholder="имя файла (необязательно)">
+        <button class="small" id="dlBtn">Скачать</button>
+      </div>
+    </div>
+    <div id="catalogView" class="hidden">
+      <div class="seg catTabs" id="catTabs">
+        <button data-cf="qwen">🖼 Qwen‑Image</button>
+        <button data-cf="krea2">🖼 Krea 2</button>
+        <button data-cf="flux3">🖼 FLUX.3</button>
+        <button data-cf="minimax">🎬 MiniMax H3</button>
+        <button data-cf="ltx">🎬 LTX‑2.5</button>
+        <button data-cf="music">🎵 Музыка</button>
+        <button data-cf="3d">🧊 3D</button>
+        <button data-cf="llm">🧠 LLM</button>
+        <button data-cf="voice">🎙 Голос</button>
+      </div>
+      <div class="note" id="tokenNote"></div>
+      <div id="catalogList"></div>
+    </div>
+    <h4>Загрузки и копирование <button class="link" id="clearTransfers">очистить завершённые</button></h4>
+    <div id="transfers" class="transfers"><p class="muted">Нет активных загрузок</p></div>
+  </div>
+</dialog>
+
+<!-- ============ НАСТРОЙКИ ============ -->
+<dialog id="aboutDlg" class="dlg">
+  <div class="dlgHead"><h2>О программе</h2><button class="icon" data-close>✕</button></div>
+  <div class="dlgBody about">
+    <div class="aboutId"><span class="logo big">ZL</span><div><b>Zouwu Lab</b><div class="muted">версия 1.0 · 6 ноября 2026</div></div></div>
+    <p>Локальная студия для генерации картинок, видео со звуком, музыки, голоса и 3D: Qwen‑Image 2.1, Krea 2, FLUX.3 Klein, MiniMax H3, LTX‑2.5, OmniVoice, Higgs TTS 3, ACE‑Step, MiniMax Music 3, YuE2, Stable Audio 3, Hunyuan3D. Всё считается на вашей видеокарте.</p>
+    <p>Автор — <b>Zouwu</b> (Николай Волков), CG / Motion / AI.<br>
+      Новые версии, вопросы и идеи: <a href="https://t.me/Zouwu_N" target="_blank" rel="noopener">t.me/Zouwu_N</a></p>
+    <p class="muted tiny">Программа бесплатная. Нейросети — работы их авторов, у каждой своя лицензия (указана в каталоге моделей). Движок генерации — ComfyUI (GPL‑3.0).</p>
+  </div>
+</dialog>
+
+<dialog id="settingsDlg" class="dlg">
+  <div class="dlgHead"><h2>Настройки</h2><button class="icon" data-close>✕</button></div>
+  <div class="dlgBody">
+    <label>Hugging Face токен (для закрытых моделей, например LTX‑2.5)
+      <input id="hfToken" type="password" placeholder="hf_…"></label>
+    <p class="muted tiny">Создать: huggingface.co → Settings → Access Tokens (тип Read). Затем на странице модели нажмите «Agree and access repository».</p>
+    <label>Civitai API ключ (нужен для скачивания большинства LoRA и для 18+)
+      <input id="civToken" type="password" placeholder="вставьте ключ"></label>
+    <p class="muted tiny">Создать: civitai.red → аккаунт → Settings → API Keys → Add API key. Аккаунт общий для civitai.red и civitai.com.</p>
+    <label>Сайт Civitai для ссылок и поиска
+      <select id="civDomain"><option value="civitai.red">civitai.red (весь каталог, включая 18+)</option><option value="civitai.com">civitai.com (только SFW)</option></select></label>
+    <h4>Память</h4>
+    <label>Профиль памяти
+      <select id="memProfile">
+        <option value="auto">Авто — по объёму ОЗУ этого компьютера (до 24 ГБ — минимум, 24–48 — бережный, от 48 — обычный)</option>
+        <option value="default">Обычный — движок сам решает (чуть быстрее, но может занять почти всю ОЗУ)</option>
+        <option value="ram_safe">Бережный к ОЗУ — для 24–48 ГБ ОЗУ</option>
+        <option value="ram_min">Минимум памяти — веса читаются с диска, без кэша (медленнее, для 16 ГБ ОЗУ и меньше)</option>
+      </select></label>
+    <p class="muted tiny" id="memProfileNow"></p><p class="muted tiny" id="memProfileNote">То, что не влезает в видеопамять, движок и так выгружает в ОЗУ. Профили не дают ему занять всю оперативную память: не закрепляют память намертво (pinned), держат запас свободной, «Минимум» ещё и не кэширует модели и читает веса прямо с диска (лучше всего с SSD). При смене профиля движок перезапустится.</p>
+    <label class="inl" title="Сколько видеопамяти движок держит свободной под вычисления. Больше — меньше шанс ошибки «out of memory» на видео, но чуть медленнее. После такой ошибки программа увеличивает запас сама.">Запас видеопамяти <input type="number" id="vramHeadroom" value="2" step="0.5" min="0" max="6" style="width:64px;display:inline-block;margin:0 4px"> ГБ</label>
+    <label class="inl"><input type="checkbox" id="memGuard" checked> Предохранитель: останавливать генерацию, если свободной оперативной памяти меньше <input type="number" id="memGuardGb" value="1.5" step="0.5" min="0.5" max="16" style="width:64px;display:inline-block;margin:0 4px"> ГБ</label>
+    <label class="inl"><input type="checkbox" id="llmUnloadAlways" checked> Выгружать помощника промптов из памяти перед каждой генерацией (даже если он работает на процессоре)</label>
+    <label>Параметры движка (память и т.п.)
+      <input id="engineArgs" placeholder="например: --lowvram"></label>
+    <div class="chips" id="argChips">
+      <button class="chip" data-arg="--lowvram">--lowvram (8–12 ГБ VRAM)</button>
+      <button class="chip" data-arg="--novram">--novram (очень мало VRAM)</button>
+      <button class="chip" data-arg="--reserve-vram 1">--reserve-vram 1</button>
+      <button class="chip" data-arg="--fast">--fast</button>
+      <button class="chip" data-arg="--cpu">--cpu (без видеокарты, очень медленно)</button>
+    </div>
+    <p class="muted tiny">При изменении параметров движок перезапустится.</p>
+    <p class="muted tiny" id="rootPath"></p>
+    <div class="rowbtns"><button class="primary" id="saveSettings">Сохранить</button><button class="small" data-openfolder="root">📂 Папка программы</button></div>
+  </div>
+</dialog>
+
+<!-- ============ ГАЛЕРЕЯ ============ -->
+<dialog id="galleryDlg" class="dlg wide">
+  <div class="dlgHead"><h2>Галерея</h2><div><button class="small" data-openfolder="output">📂 Открыть папку output</button> <button class="icon" data-close>✕</button></div></div>
+  <div class="dlgBody"><div class="gallery" id="gallery"></div></div>
+</dialog>
+
+<dialog id="cutDlg" class="dlg wide">
+  <div class="dlgHead"><h2>✂ Вырезка изменений</h2><button class="icon" data-close>✕</button></div>
+  <div class="dlgBody">
+    <p class="muted tiny">Программа сравнивает картинку до и после правки и оставляет только то, что изменилось, — на прозрачном фоне.
+      Результат можно скачать как PNG (например, для монтажа поверх видео) или превратить в маску для следующей правки.</p>
+    <div class="cutCtl">
+      <label class="inl">Сравнить с
+        <select id="cutBase"><option value="prev">предыдущей версией</option><option value="first">самой первой версией</option></select></label>
+      <div class="seg" id="cutMethod">
+        <button data-v="ai" title="Нейросеть находит изменённые предметы целиком — даже тёмные части; неизменённое и мелкую перерисовку отбрасывает">ИИ</button>
+        <button data-v="threshold" title="Только по разнице пикселей, без нейросети">По разнице</button>
+      </div>
+      <label class="inl cutSensL">Чувствительность <span class="muted tiny">меньше лишнего</span>
+        <input type="range" id="cutSens" min="0" max="100" value="50"><span class="muted tiny">больше изменений</span></label>
+      <label class="inl" title="Снимите для рамок и колец — тогда середина останется прозрачной"><input type="checkbox" id="cutFill" checked> заливать дырки</label>
+    </div>
+    <div id="cutMatt" class="cutMatt hidden"></div>
+    <div class="cutView checker"><img id="cutImg" alt=""><div id="cutWait" class="cutWait hidden">Вырезаю…</div></div>
+    <div class="muted tiny" id="cutInfo"></div>
+    <div class="rowbtns">
+      <button class="primary small" id="cutSave">💾 Скачать PNG</button>
+      <button class="small" id="cutToMask" title="Изменённая область станет маской в редакторе — можно сразу править только её">🖌 Сделать маской</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="logDlg" class="dlg wide">
+  <div class="dlgHead"><h2>Журнал движка</h2><div><button class="small" id="restartEngine">Перезапустить движок</button> <button class="icon" data-close>✕</button></div></div>
+  <div class="dlgBody"><pre id="logText"></pre></div>
+</dialog>
+
+<!-- ============ LoRA: библиотека и Civitai ============ -->
+<dialog id="loraDlg" class="dlg xwide">
+  <div class="dlgHead"><h2>LoRA</h2><button class="icon" data-close>✕</button></div>
+  <div class="tabs" id="lTabs">
+    <button data-ltab="mine" class="on">Мои LoRA</button>
+    <button data-ltab="off">★ Официальные</button>
+    <button data-ltab="civ">Civitai — поиск и скачивание</button>
+  </div>
+  <div class="dlgBody">
+    <div id="lMine">
+      <div class="toolbar">
+        <input id="mineFilter" placeholder="Фильтр по названию, файлу, триггер-словам…">
+        <label class="inl tiny hidden" title="LoRA, сделанные для другой нейросети, в этом окне скрыты — с этой моделью они не работают"><input type="checkbox" id="mineAll"> показать LoRA других моделей <span id="mineAllN"></span></label>
+        <button class="small" id="identifyAll" title="Посчитать хэши файлов и найти их страницы на Civitai">🔎 Найти описания для всех без описания</button>
+        <button class="small" id="digestAll" title="Помощник один раз прочитает описания LoRA и запишет краткую выжимку: триггеры, силу, правила">🧠 Разобрать описания</button>
+        <button class="small" data-openfolder="loras">📂 Папка</button>
+        <button class="small" id="loraUploadBtn">⤒ Добавить файл</button>
+        <input type="file" id="loraUpload" accept=".safetensors,.pt,.ckpt" multiple hidden>
+      </div>
+      <div class="identProg hidden" id="identProg"></div>
+      <p class="muted tiny">Нажмите на карточку, чтобы добавить LoRA в стек. ℹ — описание, триггер-слова, своё название и заметка.</p>
+      <div class="lgrid" id="mineGrid"></div>
+    </div>
+    <div id="lOff" class="hidden">
+      <p class="muted tiny" id="offNote">LoRA от авторов самих нейросетей: турбо‑ускорение, перенос стиля, официальные стили. Скачиваются с Hugging Face без ключа Civitai. Нажмите «В стек», чтобы добавить скачанную LoRA к генерации.</p>
+      <div id="offList"></div>
+    </div>
+    <div id="lCiv" class="hidden">
+      <div class="toolbar">
+        <input id="civLink" placeholder="Вставьте ссылку на LoRA: https://civitai.red/models/12345?modelVersionId=…">
+        <button class="small primary" id="civLinkBtn">Открыть</button>
+      </div>
+      <div class="toolbar">
+        <input id="civQ" placeholder="Поиск по названию…">
+        <select id="civBase">
+          <option value="minimax">MiniMax H3 (видео)</option>
+          <option value="ltx">LTX‑2 / 2.3 / 2.5 (видео)</option>
+          <option value="krea2">Krea 2</option>
+          <option value="flux3">FLUX.3 Klein</option>
+          <option value="qwen21">Qwen 2 / 2.1 (Qwen‑Image 2.1)</option>
+          <option value="qwen">Любые Qwen‑Image</option>
+          <option value="any">Любая база</option>
+        </select>
+        <select id="civSort"><option value="downloads">Популярные</option><option value="rated">Лучшие оценки</option><option value="new">Новые</option></select>
+        <select id="civPeriod"><option value="AllTime">За всё время</option><option value="Year">Год</option><option value="Month">Месяц</option><option value="Week">Неделя</option></select>
+        <button class="small" id="civSearch">Найти</button>
+      </div>
+      <div class="toolbar tiny">
+        <label class="inl"><input type="checkbox" id="civNsfw" checked> показывать 18+</label>
+        <label class="inl"><input type="checkbox" id="civBlur"> размывать 18+ превью (наведите — покажет)</label>
+        <span class="muted" id="civKeyNote"></span>
+      </div>
+      <div class="lgrid" id="civGrid"></div>
+      <div class="center"><button class="small hidden" id="civMore">Показать ещё</button></div>
+    </div>
+    <h4>Загрузки <button class="link" id="clearTransfers2">очистить завершённые</button></h4>
+    <div id="transfers2" class="transfers"><p class="muted">Нет активных загрузок</p></div>
+  </div>
+</dialog>
+
+<dialog id="loraInfoDlg" class="dlg wide">
+  <div class="dlgHead"><h2 id="liTitle">LoRA</h2><button class="icon" data-close>✕</button></div>
+  <div class="dlgBody"><div class="liGrid">
+    <div class="liImg" id="liImg"></div>
+    <div>
+      <div class="muted tiny" id="liSub"></div>
+      <div id="liLinks" class="rowbtns"></div>
+      <div id="liWordsBox"><h4>Триггер-слова <span class="muted tiny">(клик — вставить в промпт)</span></h4><div class="chips" id="liWords"></div></div>
+      <h4>Триггер-слова для помощника и проверки</h4>
+      <label>Слова через запятую<input id="liTriggers" placeholder="например: k3nk style, detailed skin"></label>
+      <div class="muted tiny" id="liTrigSrc"></div>
+      <div class="chips" id="liFileTags"></div>
+      <h4>Своё название и заметка</h4>
+      <label>Название в интерфейсе<input id="liCustomTitle" placeholder="по умолчанию — название с сайта"></label>
+      <label>Заметка (для чего эта LoRA)<textarea id="liNote" rows="2"></textarea></label>
+      <label class="row">Сила по умолчанию при добавлении <span class="val"><input type="number" id="liStrength" step="0.05" min="-5" max="5" placeholder="1"></span></label>
+      <div class="rowbtns"><button class="small primary" id="liSave">Сохранить</button><button class="small" id="liIdentify">🔎 Найти на Civitai по хэшу</button><button class="small" id="liPreviewFrom" title="Сделать превью из картинки, которая сейчас открыта в центре">🖼 Превью из текущей картинки</button><button class="small danger" id="liDelete">Удалить файл</button></div>
+      <div id="liDigestBox">
+        <h4>Выжимка для помощника <span class="muted tiny" id="liDigestSrc"></span></h4>
+        <label>Кратко: что делает<input id="liDgSummary" placeholder="одна фраза"></label>
+        <div class="grid3">
+          <label>Сила от<input type="number" id="liDgMin" step="0.05" min="-3" max="3"></label>
+          <label>до<input type="number" id="liDgMax" step="0.05" min="-3" max="3"></label>
+          <label>лучше<input type="number" id="liDgRec" step="0.05" min="-3" max="3"></label>
+        </div>
+        <label>Правила (по одному в строке)<textarea id="liDgRules" rows="3"></textarea></label>
+        <label>Настройки от автора<input id="liDgSettings" placeholder="шаги / CFG / семплер"></label>
+        <div class="rowbtns"><button class="small primary" id="liDgRun" title="Помощник прочитает описание, примеры и параметры картинок со страницы и заполнит поля">🧠 Разобрать описание</button><button class="small" id="liDgSave">Сохранить выжимку</button><button class="small" id="liDgReset" title="Забыть выжимку — помощник разберёт описание заново при следующем использовании">Сбросить</button></div>
+      </div>
+      <h4>Описание с сайта</h4>
+      <div class="desc" id="liDesc"></div>
+    </div>
+  </div></div>
+</dialog>
+
+<!-- ============ ПОМОЩНИК: ЧАТ ============ -->
+<dialog id="chatDlg" class="dlg wide">
+  <div class="dlgHead"><h2>Чат с помощником</h2><div><button class="small" id="chatClear">Очистить</button> <button class="icon" data-close>✕</button></div></div>
+  <div class="dlgBody">
+    <div class="muted tiny" id="chatCtx"></div>
+    <div class="chatLog" id="chatLog"></div>
+    <div class="chatIn"><textarea id="chatText" rows="2" placeholder="Например: сделай сцену ночной, добавь неон и дождь… (Enter — отправить, Shift+Enter — новая строка)"></textarea><button class="primary" id="chatSend">Отправить</button></div>
+  </div>
+</dialog>
+
+<!-- ============ ПОМОЩНИК: НАСТРОЙКИ ============ -->
+<dialog id="llmDlg" class="dlg">
+  <div class="dlgHead"><h2>Помощник промптов</h2><button class="icon" data-close>✕</button></div>
+  <div class="dlgBody">
+    <p class="muted tiny">Локальная языковая модель работает прямо в папке программы (движок llama.cpp, модели — файлы .gguf в models\llm). Ничего не отправляется в интернет.</p>
+    <h4>Движок</h4>
+    <div id="llmEngine"></div>
+    <h4>Модель</h4>
+    <label>Языковая модель<select id="llmModel"></select></label>
+    <label>Файл зрения (mmproj) — для «Описать картинку»<select id="llmMmproj"></select></label>
+    <div class="rowbtns"><button class="small" id="llmGetModels">⬇ Скачать модели для помощника</button><button class="small" data-openfolder="llm">📂 Папка llm</button></div>
+    <h4>Память</h4>
+    <label>Где запускать<select id="llmDevice">
+      <option value="gpu">Видеокарта — быстро (нейросеть на время выгружается из видеопамяти)</option>
+      <option value="cpu">Процессор — медленнее, нейросеть остаётся в видеопамяти</option></select></label>
+    <label class="inl"><input type="checkbox" id="llmKeep"> держать модель загруженной между запросами (удобно для чата; перед генерацией картинки всё равно выгружается)</label>
+    <label class="inl"><input type="checkbox" id="llmAutoDigest" checked> после скачивания LoRA — сразу разобрать её описание (один раз, пока не идёт генерация)</label>
+    <div class="rowbtns"><button class="small" id="llmUnload">Выгрузить сейчас</button><span class="muted tiny" id="llmLoaded"></span></div>
+  </div>
+</dialog>
+
+<!-- ============ МАСТЕРСКАЯ ============ -->
+<dialog id="labDlg" class="dlg xwide">
+  <div class="dlgHead"><h2>🧪 Мастерская</h2><button class="icon" data-close>✕</button></div>
+  <div class="tabs" id="labTabs">
+    <button data-lt="chat" class="on">Разговор</button>
+    <button data-lt="rules">Свод правил <span id="labRulesN" class="muted"></span></button>
+    <button data-lt="stats">Статистика и отчёт</button>
+  </div>
+  <div class="dlgBody">
+    <div id="labChat" class="labChat">
+      <div class="labSide">
+        <div class="labImg" id="labImg"><span class="muted tiny">Откройте или сгенерируйте картинку — помощник обсудит её</span></div>
+        <div class="stars small" id="labStars"></div>
+        <label class="inl tiny hidden" id="labExclBox" title="Картинка останется в журнале, но не будет влиять на статистику и закономерности"><input type="checkbox" id="labExcl"> не учитывать в статистике</label>
+        <div class="muted tiny" id="labAutoExcl"></div>
+        <div class="muted tiny" id="labParams"></div>
+      </div>
+      <div class="labMain">
+        <div class="muted tiny" id="labCtx"></div>
+        <div class="chatLog" id="labLog"></div>
+        <div class="chatIn"><textarea id="labText" rows="2" placeholder="Что хорошо, что плохо? Например: лицо пластиковое, а поза отличная. Или: запиши, что LoRA X лучше на 0.7 (Enter — отправить)"></textarea><button class="primary" id="labSend">Отправить</button></div>
+        <div class="rowbtns"><button class="small" id="labNew" title="Начать новый разговор (сохранённые правила и журнал остаются)">Новый разговор</button><span class="muted tiny">Разговоры и оценки сохраняются в журнал — пригодятся для итогового системного промпта.</span></div>
+      </div>
+    </div>
+    <div id="labRules" class="hidden">
+      <div class="toolbar">
+        <select id="labRulesFam"><option value="cur">правила этой нейросети</option><option value="all">все правила</option></select>
+        <label class="inl"><input type="checkbox" id="labInPrompt" checked> учитывать принятые правила в «Улучшить», «Рандом», чате</label>
+      </div>
+      <div class="ruleAdd"><input id="labRuleText" placeholder="Своё правило, например: для портретов CFG 1, 30 шагов, LoRA кожи не выше 0.6"><button class="small primary" id="labRuleAdd">Добавить</button></div>
+      <div id="labRuleList"></div>
+    </div>
+    <div id="labStats" class="hidden">
+      <div class="toolbar">
+        <select id="labStatsFam"><option value="cur">эта нейросеть</option><option value="all">все нейросети</option></select>
+        <button class="small primary" id="labPatterns" title="Код посчитает статистику по всем оценкам, помощник найдёт закономерности и предложит правила">🔍 Найти закономерности</button>
+        <button class="small" id="labReport" title="Промежуточный или итоговый отчёт: правила, статистика, лучшие и худшие картинки. База не очищается">📄 Отчёт (.md)</button>
+        <button class="small" id="labExport" title="Все оценки, правила и разговоры одним файлом">💾 Все данные (.jsonl)</button>
+      </div>
+      <p class="muted tiny">Журнал хранится в папке <b>journal</b> программы и копится неделями: отчёты его не очищают, обновления программы не трогают, раз в день делается резервная копия (journal\backup).</p>
+      <div id="labStatsBox"></div>
+      <div class="aiOut hidden" id="labPatOut"></div>
+      <div class="labAuto">
+        <h4>Автооценка <span class="muted tiny">— вторая «пара глаз» рядом с вашими звёздами</span></h4>
+        <p class="muted tiny">Нейросети, обученные на выборе тысяч людей, ставят каждой новой картинке балл. Они не знают ваш вкус — поэтому здесь видно, насколько они с вами совпадают. Если совпадают хорошо, в будущем помощник сможет сам отсеивать слабые варианты. Обучены в основном на обычном (не 18+) контенте — на откровенных картинках могут ошибаться.</p>
+        <div id="autoModels"></div>
+        <div class="rowbtns">
+          <label class="inl"><input type="checkbox" id="autoOn" checked> оценивать каждую новую картинку автоматически</label>
+          <select id="autoDev" title="Где считать"><option value="cpu">на процессоре (рекомендуется — не трогает видеопамять)</option><option value="gpu">на видеокарте (быстрее, только между генерациями)</option></select>
+          <button class="small" id="autoBackfill" title="Оценить картинки, которые уже есть в журнале">Оценить всё из журнала</button>
+        </div>
+        <div class="muted tiny" id="autoState"></div>
+        <div id="autoAgree"></div>
+      </div>
+      <div class="labSync">
+        <h4>Журналы с разных компьютеров</h4>
+        <div class="syncRow"><label>Этот компьютер называется<input id="labDevName" placeholder="например: Дом, Работа, Саша"></label><button class="small" id="labDevSave">Сохранить имя</button></div>
+        <div class="muted tiny" id="labDevs"></div>
+        <div class="rowbtns">
+          <button class="small" id="labPackOut" title="Все оценки, разговоры, правила и миниатюры одним файлом — отправьте его себе или другу">📤 Выгрузить журнал</button>
+          <button class="small" id="labPackIn" title="Файл .f2journal с другого компьютера: оценки добавятся к вашим, повторы пропускаются">📥 Добавить журнал с другого компьютера</button>
+          <input type="file" id="labPackFile" accept=".f2journal,.zip" multiple hidden>
+        </div>
+        <div class="syncRow"><label>Общая папка для автосинхронизации (OneDrive, Яндекс Диск, Google Drive, сетевая)<input id="labSyncDir" placeholder="например: C:\Users\Имя\OneDrive\ZouwuLab"></label><button class="small" id="labSyncSave">Подключить</button><button class="small" id="labSyncNow" title="Выгрузить свои оценки и забрать чужие прямо сейчас">🔄</button></div>
+        <div class="muted tiny" id="labSyncState"></div>
+        <p class="muted tiny">Каждый компьютер кладёт в общую папку только свой файл и забирает файлы остальных — раз в 10 минут, через минуту после новой оценки и при запуске. Повторы не дублируются, правила с одинаковым текстом объединяются.</p>
+      </div>
+      <details class="adv labReset"><summary>🗑 Сбросить статистику…</summary>
+        <p class="muted tiny">Оценки и разговоры выбранной нейросети (или всех — по переключателю вверху) удаляются из статистики. Перед этим вся база копируется в <b>journal\archive</b> — при необходимости её можно вернуть.</p>
+        <label class="inl"><input type="radio" name="labResetRules" value="keep" checked> свод правил оставить</label>
+        <label class="inl"><input type="radio" name="labResetRules" value="unconfirmed"> удалить правила «на проверке» и отклонённые, принятые оставить</label>
+        <label class="inl"><input type="radio" name="labResetRules" value="all"> удалить и все правила</label>
+        <div class="rowbtns"><button class="small danger" id="labResetBtn">Сбросить</button></div>
+      </details>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ ПЕРСОНАЖИ ============ -->
+<dialog id="charDlg" class="dlg xwide">
+  <div class="dlgHead"><h2>Персонажи</h2><button class="icon" data-close>✕</button></div>
+  <div class="dlgBody">
+    <div class="toolbar">
+      <input id="newCharName" placeholder="Имя нового персонажа, например: Анна">
+      <button class="small primary" id="newCharBtn">+ Новый персонаж: выбрать фото…</button>
+      <input type="file" id="charFiles" accept="image/*" multiple hidden>
+    </div>
+    <p class="muted tiny">Лучше всего 1–3 чётких фото лица анфас или в 3/4, хорошо освещённых. После выбора фото можно обвести лицо рамкой (голова с плечами — оптимально). Нажмите на карточку, чтобы выбрать персонажа для генерации.</p>
+    <div class="lgrid" id="charGrid"></div>
+    <div id="charEdit" class="charEdit hidden"></div>
+  </div>
+</dialog>
+
+<dialog id="cropDlg" class="dlg wide">
+  <div class="dlgHead"><h2 id="cropTitle">Выделите лицо</h2><button class="icon" data-close>✕</button></div>
+  <div class="dlgBody">
+    <p class="muted tiny">Протяните рамку мышью вокруг головы (лучше с небольшим запасом: волосы, подбородок, шея). Можно пропустить — тогда возьмётся всё фото.</p>
+    <div class="cropWrap" id="cropWrap"><img id="cropImg" alt="" draggable="false"><div id="cropBox" class="hidden"></div></div>
+    <div class="rowbtns" id="cropTarget"></div>
+    <div class="rowbtns"><button class="small primary" id="cropOk">Сохранить с рамкой</button><button class="small" id="cropAll">Всё фото</button><button class="small" id="cropCancel">Отмена</button></div>
+  </div>
+</dialog>
+
+<div class="toast hidden" id="toast"></div>
+<script src="/static/app.js"></script>
+<script src="/static/voice.js"></script>
+<script src="/static/speech.js"></script>
+<script src="/static/t3.js"></script>
+<script src="/static/music.js"></script>
+<script type="module" src="/static/vendor/model-viewer.min.js"></script>
+</body>
+</html>
